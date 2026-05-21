@@ -17,3 +17,4 @@ n8n · OpenAI API · Gmail API · Google Drive · Google Sheets
 
 ## Import
 Download `gmail_ai_resume_screener.json` → n8n → Import Workflow
+<img width="1646" height="448" alt="image" src="https://github.com/user-attachments/assets/564c0982-4594-4924-9abd-04674ea4f34c" />
