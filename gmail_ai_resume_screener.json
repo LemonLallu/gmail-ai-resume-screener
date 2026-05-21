@@ -1,0 +1,654 @@
+{
+  "name": "Gmail → AI Resume Screener PROD",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": { "item": [{ "mode": "everyMinute" }] },
+        "simple": false,
+        "filters": { "hasAttachment": true },
+        "options": {
+          "downloadAttachments": true,
+          "attachmentsPrefix": "attachment_"
+        }
+      },
+      "id": "node-0001-gmail-trigger",
+      "name": "Gmail - On Email Received",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "credentials": {
+        "gmailOAuth2": { "id": "GMAIL_CREDENTIAL_ID", "name": "Gmail Account" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "name": "={{ $json.subject }}",
+        "driveId": { "__rl": true, "value": "My Drive", "mode": "list", "cachedResultName": "My Drive" },
+        "folderId": { "__rl": true, "value": "RESUMES_FOLDER_ID", "mode": "id" },
+        "binaryData": true,
+        "binaryPropertyName": "attachment_0",
+        "options": {}
+      },
+      "id": "node-0002-upload-drive",
+      "name": "Upload Resume to Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [500, 300],
+      "credentials": {
+        "googleDriveOAuth2Api": { "id": "GDRIVE_CREDENTIAL_ID", "name": "Google Drive Account" }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.mimeType }}",
+                    "rightValue": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "DOCX"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.mimeType }}",
+                    "rightValue": "application/pdf",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "PDF"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.mimeType }}",
+                    "rightValue": "text/plain",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "TXT"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-0003-switch",
+      "name": "Switch - Route by File Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}/copy",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"mimeType\": \"application/vnd.google-apps.document\",\n  \"name\": \"{{ $json.name }} (Converted)\"\n}",
+        "options": {}
+      },
+      "id": "node-0004-convert-docx",
+      "name": "Convert DOCX to Google Doc",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1050, 100],
+      "credentials": {
+        "googleDriveOAuth2Api": { "id": "GDRIVE_CREDENTIAL_ID", "name": "Google Drive Account" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}/export?mimeType=application%2Fpdf",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "node-0005-download-gdoc-pdf",
+      "name": "Download Google Doc as PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1300, 100],
+      "credentials": {
+        "googleDriveOAuth2Api": { "id": "GDRIVE_CREDENTIAL_ID", "name": "Google Drive Account" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data"
+      },
+      "id": "node-0006-extract-docx",
+      "name": "Extract Text from DOCX",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [1550, 100]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": { "__rl": true, "value": "={{ $json.id }}", "mode": "id" },
+        "options": { "fileName": "={{ $json.name }}" }
+      },
+      "id": "node-0007-download-pdf",
+      "name": "Download PDF from Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1050, 320],
+      "credentials": {
+        "googleDriveOAuth2Api": { "id": "GDRIVE_CREDENTIAL_ID", "name": "Google Drive Account" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data"
+      },
+      "id": "node-0008-extract-pdf",
+      "name": "Extract Text from PDF",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [1300, 320]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": { "__rl": true, "value": "={{ $json.id }}", "mode": "id" },
+        "options": { "fileName": "={{ $json.name }}" }
+      },
+      "id": "node-0009-download-txt",
+      "name": "Download TXT from Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1050, 540],
+      "credentials": {
+        "googleDriveOAuth2Api": { "id": "GDRIVE_CREDENTIAL_ID", "name": "Google Drive Account" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "binaryPropertyName": "data"
+      },
+      "id": "node-0010-extract-txt",
+      "name": "Extract Text from TXT",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [1300, 540]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "rename-txt-field",
+              "name": "text",
+              "value": "={{ $json.data }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-0011-rename-txt",
+      "name": "Rename TXT Field to Text",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1550, 540]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "std-text",
+              "name": "text",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "std-resume-link",
+              "name": "resumeLink",
+              "value": "={{ $('Upload Resume to Drive').item.json.webViewLink }}",
+              "type": "string"
+            },
+            {
+              "id": "std-file-id",
+              "name": "driveFileId",
+              "value": "={{ $('Upload Resume to Drive').item.json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-0012-standardize",
+      "name": "Standardize Text",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1800, 300]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": { "__rl": true, "value": "JOB_DESCRIPTION_FILE_ID", "mode": "id" },
+        "options": {
+          "googleFileConversion": {
+            "conversion": {
+              "docsToFormat": "application/pdf"
+            }
+          }
+        }
+      },
+      "id": "node-0013-get-jd",
+      "name": "Get Job Description",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [2050, 300],
+      "credentials": {
+        "googleDriveOAuth2Api": { "id": "GDRIVE_CREDENTIAL_ID", "name": "Google Drive Account" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data"
+      },
+      "id": "node-0014-extract-jd",
+      "name": "Extract Job Description Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [2300, 300]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an expert technical recruiter. Evaluate the following resume against the job description.\n\n---RESUME---\n{{ $('Standardize Text').item.json.text }}\n\n---JOB DESCRIPTION---\n{{ $json.text }}\n\nProvide your structured evaluation now.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a senior technical recruiter with 15+ years of experience screening candidates. Evaluate each candidate objectively against the job requirements. Be specific, honest, and data-driven in your analysis. Always return valid JSON matching the required output schema exactly."
+        }
+      },
+      "id": "node-0015-recruiter-agent",
+      "name": "Recruiter Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [2550, 300]
+    },
+    {
+      "parameters": {
+        "model": "o4-mini",
+        "options": {
+          "maxTokens": 2000
+        }
+      },
+      "id": "node-0016-openai-recruiter",
+      "name": "OpenAI - Recruiter Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [2350, 520],
+      "credentials": {
+        "openAiApi": { "id": "OPENAI_CREDENTIAL_ID", "name": "OpenAI Account" }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"strengths\": {\n      \"type\": \"string\",\n      \"description\": \"Key strengths of the candidate relevant to the role\"\n    },\n    \"weaknesses\": {\n      \"type\": \"string\",\n      \"description\": \"Gaps or weaknesses compared to job requirements\"\n    },\n    \"risk_reward\": {\n      \"type\": \"string\",\n      \"description\": \"Balanced risk vs reward analysis of hiring this candidate\"\n    },\n    \"fit_rating\": {\n      \"type\": \"number\",\n      \"description\": \"Overall fit score from 1 (poor fit) to 10 (perfect fit)\",\n      \"minimum\": 1,\n      \"maximum\": 10\n    },\n    \"justification\": {\n      \"type\": \"string\",\n      \"description\": \"Detailed reasoning behind the fit rating\"\n    }\n  },\n  \"required\": [\"strengths\", \"weaknesses\", \"risk_reward\", \"fit_rating\", \"justification\"]\n}"
+      },
+      "id": "node-0017-output-parser",
+      "name": "Structured Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1,
+      "position": [2600, 520]
+    },
+    {
+      "parameters": {
+        "text": "={{ $('Standardize Text').item.json.text }}",
+        "attributes": {
+          "attributes": [
+            {
+              "name": "first_name",
+              "description": "The candidate's first name",
+              "required": true
+            },
+            {
+              "name": "last_name",
+              "description": "The candidate's last name",
+              "required": true
+            },
+            {
+              "name": "email",
+              "description": "The candidate's email address",
+              "required": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-0018-info-extractor",
+      "name": "Information Extractor",
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1,
+      "position": [2800, 300]
+    },
+    {
+      "parameters": {
+        "model": "o4-mini",
+        "options": {
+          "maxTokens": 300
+        }
+      },
+      "id": "node-0019-openai-extractor",
+      "name": "OpenAI - Extractor Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [2800, 520],
+      "credentials": {
+        "openAiApi": { "id": "OPENAI_CREDENTIAL_ID", "name": "OpenAI Account" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "value": "YOUR_GOOGLE_SHEET_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Sheet1", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date / Time": "={{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}",
+            "Resume Link": "={{ $('Standardize Text').item.json.resumeLink }}",
+            "First Name": "={{ $json.first_name }}",
+            "Last Name": "={{ $json.last_name }}",
+            "Email": "={{ $json.email }}",
+            "Strengths": "={{ $('Recruiter Agent').item.json.output.strengths }}",
+            "Weaknesses": "={{ $('Recruiter Agent').item.json.output.weaknesses }}",
+            "Risk / Reward": "={{ $('Recruiter Agent').item.json.output.risk_reward }}",
+            "Overall Fit (out of 10)": "={{ $('Recruiter Agent').item.json.output.fit_rating }}",
+            "Justification": "={{ $('Recruiter Agent').item.json.output.justification }}"
+          },
+          "schema": [
+            { "id": "Date / Time", "displayName": "Date / Time", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "string" },
+            { "id": "Resume Link", "displayName": "Resume Link", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "string" },
+            { "id": "First Name", "displayName": "First Name", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "string" },
+            { "id": "Last Name", "displayName": "Last Name", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "string" },
+            { "id": "Email", "displayName": "Email", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "string" },
+            { "id": "Strengths", "displayName": "Strengths", "required": false, "defaultMatch": false, "canBeUsedToMatch": false, "display": true, "type": "string" },
+            { "id": "Weaknesses", "displayName": "Weaknesses", "required": false, "defaultMatch": false, "canBeUsedToMatch": false, "display": true, "type": "string" },
+            { "id": "Risk / Reward", "displayName": "Risk / Reward", "required": false, "defaultMatch": false, "canBeUsedToMatch": false, "display": true, "type": "string" },
+            { "id": "Overall Fit (out of 10)", "displayName": "Overall Fit (out of 10)", "required": false, "defaultMatch": false, "canBeUsedToMatch": false, "display": true, "type": "number" },
+            { "id": "Justification", "displayName": "Justification", "required": false, "defaultMatch": false, "canBeUsedToMatch": false, "display": true, "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-0020-google-sheets",
+      "name": "Append to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [3050, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": { "id": "GSHEETS_CREDENTIAL_ID", "name": "Google Sheets Account" }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "node-0021-error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [250, 700]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "err-msg",
+              "name": "errorMessage",
+              "value": "={{ $json.execution.error.message }}",
+              "type": "string"
+            },
+            {
+              "id": "err-workflow",
+              "name": "workflowName",
+              "value": "={{ $json.execution.workflow.name }}",
+              "type": "string"
+            },
+            {
+              "id": "err-url",
+              "name": "executionUrl",
+              "value": "={{ $json.execution.url }}",
+              "type": "string"
+            },
+            {
+              "id": "err-node",
+              "name": "failedNode",
+              "value": "={{ $json.execution.error.node.name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-0022-format-error",
+      "name": "Format Error Details",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [500, 700]
+    },
+    {
+      "parameters": {
+        "sendTo": "YOUR_ALERT_EMAIL@example.com",
+        "subject": "=⚠️ Resume Screener Error — {{ $json.workflowName }}",
+        "emailType": "html",
+        "message": "=<h2>Workflow Error Alert</h2>\n<table style='font-family:sans-serif;border-collapse:collapse'>\n  <tr><td style='padding:8px;font-weight:bold'>Workflow</td><td style='padding:8px'>{{ $json.workflowName }}</td></tr>\n  <tr><td style='padding:8px;font-weight:bold'>Failed Node</td><td style='padding:8px'>{{ $json.failedNode }}</td></tr>\n  <tr><td style='padding:8px;font-weight:bold'>Error</td><td style='padding:8px;color:#cc0000'>{{ $json.errorMessage }}</td></tr>\n  <tr><td style='padding:8px;font-weight:bold'>Execution</td><td style='padding:8px'><a href='{{ $json.executionUrl }}'>View in n8n →</a></td></tr>\n</table>",
+        "options": {}
+      },
+      "id": "node-0023-error-email",
+      "name": "Send Error Alert Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [750, 700],
+      "credentials": {
+        "gmailOAuth2": { "id": "GMAIL_CREDENTIAL_ID", "name": "Gmail Account" }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## 📧 Step 1 — Email Trigger\nPolls Gmail every minute for emails with attachments.\n\n**Setup required:**\n- Set `pollTimes` to your preferred interval\n- Ensure Gmail OAuth2 credential has `gmail.readonly` scope\n- Consider adding a label filter to isolate job applications",
+        "height": 160,
+        "width": 220,
+        "color": 4
+      },
+      "id": "node-0024-note-trigger",
+      "name": "Note - Trigger",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [250, 80]
+    },
+    {
+      "parameters": {
+        "content": "## 🔀 Step 2 — File Type Router\nReads `mimeType` from the Google Drive upload response.\n\n**3 supported paths:**\n- DOCX → convert → export PDF → extract\n- PDF → download → extract\n- TXT → download → extract → rename field",
+        "height": 160,
+        "width": 220,
+        "color": 3
+      },
+      "id": "node-0025-note-switch",
+      "name": "Note - Switch",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [750, 80]
+    },
+    {
+      "parameters": {
+        "content": "## 🤖 Step 3 — AI Analysis\n**Recruiter Agent** — evaluates fit against JD:\n→ strengths, weaknesses, risk/reward, fit_rating (1-10), justification\n\n**Information Extractor** — pulls contact info:\n→ first_name, last_name, email\n\nBoth use `o4-mini` model.\n\n⚠️ Replace `JOB_DESCRIPTION_FILE_ID` in 'Get Job Description' with your actual Drive file ID.",
+        "height": 200,
+        "width": 280,
+        "color": 5
+      },
+      "id": "node-0026-note-ai",
+      "name": "Note - AI Analysis",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [2550, 80]
+    }
+  ],
+  "connections": {
+    "Gmail - On Email Received": {
+      "main": [
+        [{ "node": "Upload Resume to Drive", "type": "main", "index": 0 }]
+      ]
+    },
+    "Upload Resume to Drive": {
+      "main": [
+        [{ "node": "Switch - Route by File Type", "type": "main", "index": 0 }]
+      ]
+    },
+    "Switch - Route by File Type": {
+      "main": [
+        [{ "node": "Convert DOCX to Google Doc", "type": "main", "index": 0 }],
+        [{ "node": "Download PDF from Drive", "type": "main", "index": 0 }],
+        [{ "node": "Download TXT from Drive", "type": "main", "index": 0 }]
+      ]
+    },
+    "Convert DOCX to Google Doc": {
+      "main": [
+        [{ "node": "Download Google Doc as PDF", "type": "main", "index": 0 }]
+      ]
+    },
+    "Download Google Doc as PDF": {
+      "main": [
+        [{ "node": "Extract Text from DOCX", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Text from DOCX": {
+      "main": [
+        [{ "node": "Standardize Text", "type": "main", "index": 0 }]
+      ]
+    },
+    "Download PDF from Drive": {
+      "main": [
+        [{ "node": "Extract Text from PDF", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Text from PDF": {
+      "main": [
+        [{ "node": "Standardize Text", "type": "main", "index": 0 }]
+      ]
+    },
+    "Download TXT from Drive": {
+      "main": [
+        [{ "node": "Extract Text from TXT", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Text from TXT": {
+      "main": [
+        [{ "node": "Rename TXT Field to Text", "type": "main", "index": 0 }]
+      ]
+    },
+    "Rename TXT Field to Text": {
+      "main": [
+        [{ "node": "Standardize Text", "type": "main", "index": 0 }]
+      ]
+    },
+    "Standardize Text": {
+      "main": [
+        [{ "node": "Get Job Description", "type": "main", "index": 0 }]
+      ]
+    },
+    "Get Job Description": {
+      "main": [
+        [{ "node": "Extract Job Description Text", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Job Description Text": {
+      "main": [
+        [{ "node": "Recruiter Agent", "type": "main", "index": 0 }]
+      ]
+    },
+    "Recruiter Agent": {
+      "main": [
+        [{ "node": "Information Extractor", "type": "main", "index": 0 }]
+      ]
+    },
+    "Information Extractor": {
+      "main": [
+        [{ "node": "Append to Google Sheet", "type": "main", "index": 0 }]
+      ]
+    },
+    "OpenAI - Recruiter Model": {
+      "ai_languageModel": [
+        [{ "node": "Recruiter Agent", "type": "ai_languageModel", "index": 0 }]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [{ "node": "Recruiter Agent", "type": "ai_outputParser", "index": 0 }]
+      ]
+    },
+    "OpenAI - Extractor Model": {
+      "ai_languageModel": [
+        [{ "node": "Information Extractor", "type": "ai_languageModel", "index": 0 }]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [{ "node": "Format Error Details", "type": "main", "index": 0 }]
+      ]
+    },
+    "Format Error Details": {
+      "main": [
+        [{ "node": "Send Error Alert Email", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "tags": [
+    { "name": "Recruiting" },
+    { "name": "AI" },
+    { "name": "Automation" }
+  ]
+}
